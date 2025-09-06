@@ -1,12 +1,17 @@
 class ApiConstants {
-  static const String baseUrl = 'http://localhost:8000/api/v1';
-  static const String authUrl = 'http://localhost:8000/api/auth';
+  // For Android emulator
+  static String baseUrl = '10.0.2.2:8000/api/v1';
+  static String authUrl = '10.0.2.2:8000/api/auth';
   
-  // For production, replace with your actual server URL:
-  // static const String baseUrl = 'https://your-django-server.com/api/v1';
-  // static const String authUrl = 'https://your-django-server.com/api/auth';
+  // For physical devices, uncomment and use your computer's IP address
+  // static String baseUrl = '192.168.1.X:8000/api/v1'; // Replace X with your IP
+  // static String authUrl = '192.168.1.X:8000/api/auth'; // Replace X with your IP
   
-  static const Duration requestTimeout = Duration(seconds: 30);
+  // Add http:// prefix to URLs
+  static String get apiBaseUrl => 'http://$baseUrl';
+  static String get apiAuthUrl => 'http://$authUrl';
+  
+  static const Duration requestTimeout = Duration(seconds: 15); // Increased timeout
   static const Duration uploadTimeout = Duration(minutes: 5);
   
   // HTTP status codes

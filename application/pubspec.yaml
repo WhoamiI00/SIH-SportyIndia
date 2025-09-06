@@ -35,7 +35,8 @@ dependencies:
   camera: ^0.10.5+5
 
   # File handling
-  file_picker: ^5.2.10
+  # File picking - temporarily disabled due to compatibility issues
+  # file_picker: ^6.1.1
   path_provider: ^2.1.1
 
   # Permissions

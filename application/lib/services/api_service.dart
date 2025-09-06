@@ -1,12 +1,17 @@
 // lib/services/api_service.dart
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/api_response.dart';
+import '../utils/constants.dart';
+import '../utils/error_handler.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000/api/v1'; // Change to your Django server URL
-  static const String authUrl = 'http://localhost:8000/api/auth';
+  // Use constants from ApiConstants class
+  String get baseUrl => ApiConstants.apiBaseUrl;
+  String get authUrl => ApiConstants.apiAuthUrl;
   
   // Headers for API requests
   Map<String, String> get headers => {
@@ -22,10 +27,42 @@ class ApiService {
 
   String? _token;
 
-  // Initialize token from storage
-  Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('auth_token');
+  // Initialize token from storage and test connection
+  Future<ApiResponse<String>> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _token = prefs.getString('auth_token');
+      
+      // Simple connection test
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 5));
+        
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          print('API connection successful');
+          return ApiResponse.success('API connection successful');
+        } else {
+          return ApiResponse.error(
+            'API connection failed with status code: ${response.statusCode}',
+            errorType: 'http'
+          );
+        }
+      } catch (e) {
+        return ApiResponse.error(
+          'API connection failed: ${e.toString()}',
+          errorType: 'connection'
+        );
+      }
+    } catch (e) {
+      print('API initialization error: $e');
+      final error = ErrorHandler.handleException(e);
+      return ApiResponse.error(
+        'API connection error: ${error.message}',
+        errorType: error.type
+      );
+    }
   }
 
   // Save token to storage
@@ -42,29 +79,69 @@ class ApiService {
     _token = null;
   }
 
-  // Authentication Methods
-  Future<Map<String, dynamic>> login(String username, String password) async {
+  // Helper method to handle HTTP requests with proper error handling
+  Future<ApiResponse<T>> _safeApiCall<T>(Future<http.Response> Function() apiCall, [T Function(dynamic)? dataConverter]) async {
     try {
-      final response = await http.post(
+      final response = await apiCall();
+      final responseData = jsonDecode(response.body);
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = dataConverter != null ? dataConverter(responseData) : responseData as T;
+        return ApiResponse<T>.success(data);
+      } else {
+        String errorMessage = 'Server error';
+        if (responseData is Map && responseData.containsKey('error')) {
+          errorMessage = responseData['error'].toString();
+        } else if (responseData is Map && responseData.containsKey('detail')) {
+          errorMessage = responseData['detail'].toString();
+        }
+        return ApiResponse<T>.error(
+          errorMessage,
+          statusCode: response.statusCode,
+          errorType: 'http',
+        );
+      }
+    } catch (e) {
+      print('API call error: $e');
+      String errorType = 'unknown';
+      String errorMessage = 'An unexpected error occurred';
+      
+      if (e is SocketException) {
+        errorType = 'socket';
+        errorMessage = 'Network connection error. Please check your internet connection.';
+      } else if (e is HttpException) {
+        errorType = 'http';
+        errorMessage = 'HTTP error. Could not find the requested resource.';
+      } else if (e is FormatException) {
+        errorType = 'format';
+        errorMessage = 'Invalid response format. Please try again later.';
+      } else if (e is TimeoutException) {
+        errorType = 'timeout';
+        errorMessage = 'Request timed out. Please try again later.';
+      } else {
+        errorMessage = 'An unexpected error occurred: $e';
+      }
+      
+      return ApiResponse<T>.error(errorMessage, errorType: errorType);
+    }
+  }
+  
+  // Authentication Methods
+  Future<ApiResponse<Map<String, dynamic>>> login(String username, String password) async {
+    final response = await _safeApiCall<Map<String, dynamic>>(() => http.post(
         Uri.parse('$authUrl/login/'),
         headers: headers,
         body: jsonEncode({
           'username': username,
           'password': password,
         }),
-      );
-
-      final data = jsonDecode(response.body);
+      ).timeout(ApiConstants.requestTimeout));
       
-      if (response.statusCode == 200) {
-        await _saveToken(data['token']);
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'error': data['detail'] ?? 'Login failed'};
-      }
-    } catch (e) {
-      return {'success': false, 'error': 'Network error: $e'};
+    if (response.success && response.data != null && response.data!.containsKey('token')) {
+      await _saveToken(response.data!['token']);
     }
+    
+    return response;
   }
 
   Future<void> logout() async {
@@ -81,62 +158,88 @@ class ApiService {
   }
 
   // Athlete Profile Methods
-  Future<Map<String, dynamic>> registerAthlete(Map<String, dynamic> athleteData) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/athletes/register_athlete/'),
-        headers: authHeaders,
-        body: jsonEncode(athleteData),
-      );
-
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 201) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'error': data};
-      }
-    } catch (e) {
-      return {'success': false, 'error': 'Network error: $e'};
+  Future<ApiResponse<Map<String, dynamic>>> registerAthlete(Map<String, dynamic> athleteData) async {
+    return _safeApiCall<Map<String, dynamic>>(() => http.post(
+      Uri.parse('$baseUrl/athletes/register_athlete/'),
+      headers: authHeaders,
+      body: jsonEncode(athleteData),
+    ).timeout(ApiConstants.requestTimeout));
+  }
+  
+  // Get current user profile
+  Future<ApiResponse<Map<String, dynamic>>> getCurrentUser() async {
+    if (_token == null) {
+      return ApiResponse.error('Not authenticated', errorType: 'auth');
     }
+    
+    return _safeApiCall<Map<String, dynamic>>(() => http.get(
+      Uri.parse('$baseUrl/athletes/me/'),
+      headers: authHeaders,
+    ).timeout(ApiConstants.requestTimeout));
   }
 
-  Future<Map<String, dynamic>> getAthleteProfile() async {
-    try {
-      final response = await http.get(
+  Future<ApiResponse<Map<String, dynamic>>> getAthleteProfile() async {
+    return _safeApiCall<Map<String, dynamic>>(
+      () => http.get(
         Uri.parse('$baseUrl/athletes/'),
         headers: authHeaders,
-      );
-
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data['results']};
-      } else {
-        return {'success': false, 'error': data};
-      }
-    } catch (e) {
-      return {'success': false, 'error': 'Network error: $e'};
-    }
+      ).timeout(ApiConstants.requestTimeout),
+      (data) => {'results': data['results']}
+    );
   }
 
-  Future<Map<String, dynamic>> updateAthleteProfile(String athleteId, Map<String, dynamic> updateData) async {
+  Future<ApiResponse<Map<String, dynamic>>> updateAthleteProfile(String athleteId, Map<String, dynamic> updateData) async {
+    return _safeApiCall<Map<String, dynamic>>(() => http.patch(
+      Uri.parse('$baseUrl/athletes/$athleteId/'),
+      headers: authHeaders,
+      body: jsonEncode(updateData),
+    ).timeout(ApiConstants.requestTimeout));
+  }
+  
+  // Health check method to test connection to backend
+  Future<ApiResponse<Map<String, dynamic>>> healthCheck() async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/athletes/$athleteId/'),
-        headers: authHeaders,
-        body: jsonEncode(updateData),
-      );
-
-      final data = jsonDecode(response.body);
+      // Try multiple endpoints to check connectivity
+      final endpoints = [
+        '$baseUrl/health/',
+        '$baseUrl/',
+        '$authUrl/'
+      ];
       
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'error': data};
+      for (final endpoint in endpoints) {
+        try {
+          final response = await http.get(
+            Uri.parse(endpoint),
+            headers: headers,
+          ).timeout(const Duration(seconds: 5));
+          
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            return ApiResponse.success({
+              'endpoint': endpoint,
+              'status': response.statusCode,
+              'message': 'Connection successful'
+            });
+          }
+        } catch (e) {
+          // Continue to next endpoint if this one fails
+          continue;
+        }
       }
+      
+      // If all endpoints failed
+      return ApiResponse.error(
+        'Could not connect to any backend endpoint',
+        errorType: 'connection',
+        statusCode: 0
+      );
     } catch (e) {
-      return {'success': false, 'error': 'Network error: $e'};
+      print('Health check error: $e');
+      final error = ErrorHandler.handleException(e);
+      return ApiResponse.error(
+        error.message,
+        errorType: error.type,
+        statusCode: 0
+      );
     }
   }
 
@@ -466,25 +569,7 @@ class ApiService {
     }
   }
 
-  // Health Check
-  Future<Map<String, dynamic>> healthCheck() async {
-    try {
-      final response = await http.get(
-        Uri.parse('http://localhost:8000/health/'),
-        headers: headers,
-      );
-
-      final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'error': data};
-      }
-    } catch (e) {
-      return {'success': false, 'error': 'Network error: $e'};
-    }
-  }
+  // Health Check method removed to avoid duplicate declaration
 
   // Helper method to get device info
   Future<Map<String, dynamic>> _getDeviceInfo() async {

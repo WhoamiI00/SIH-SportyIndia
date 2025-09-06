@@ -10,13 +10,14 @@ import 'screens/home_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/assessment_screen.dart';
 import 'screens/leaderboard_screen.dart';
+import 'screens/connection_test_screen.dart';
 
 void main() {
-  runApp(const SAITalentApp());
+  runApp(const KhelPratibhaApp());
 }
 
-class SAITalentApp extends StatelessWidget {
-  const SAITalentApp({super.key});
+class KhelPratibhaApp extends StatelessWidget {
+  const KhelPratibhaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +28,7 @@ class SAITalentApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LeaderboardProvider()),
       ],
       child: MaterialApp(
-        title: 'SAI Talent Assessment',
+        title: 'KhelPratibha',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: Colors.orange,
@@ -58,6 +59,7 @@ class SAITalentApp extends StatelessWidget {
           '/profile': (context) => const ProfileScreen(),
           '/assessment': (context) => const AssessmentScreen(),
           '/leaderboard': (context) => const LeaderboardScreen(),
+          '/connection_test': (context) => const ConnectionTestScreen(),
         },
       ),
     );

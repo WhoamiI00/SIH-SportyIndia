@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/connection_test.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -20,9 +21,19 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(seconds: 2)); // Simulate loading
     
     if (mounted) {
+      // Initialize auth provider which will test connection
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.init();
+      final initResult = await authProvider.init();
       
+      if (!initResult.success) {
+        // If connection fails, show connection test screen
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/connection_test');
+          return;
+        }
+      }
+      
+      // Normal authentication flow if connection is successful
       if (authProvider.isAuthenticated) {
         Navigator.pushReplacementNamed(context, '/home');
       } else {
@@ -53,7 +64,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               SizedBox(height: 24),
               Text(
-                'SAI Talent Assessment',
+                'KhelPratibha',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -62,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               SizedBox(height: 12),
               Text(
-                'Sports Authority of India',
+                'Talent Assessment Platform',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.white70,

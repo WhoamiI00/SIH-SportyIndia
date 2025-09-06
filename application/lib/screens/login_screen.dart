@@ -63,14 +63,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'Welcome to SAI Talent Assessment',
+                  'Welcome to KhelPratibha',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 24),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/connection_test');
+                  },
+                  child: const Text('Test Backend Connection'),
+                ),
+                const SizedBox(height: 24),
                 TextFormField(
                   controller: _usernameController,
                   decoration: const InputDecoration(
