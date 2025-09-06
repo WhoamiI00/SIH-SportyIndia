@@ -32,11 +32,13 @@ router.register(r'leaderboards', views.LeaderboardViewSet, basename='leaderboard
 router.register(r'badges', views.BadgeViewSet, basename='badges')
 router.register(r'sai-submissions', views.SAISubmissionViewSet, basename='sai-submissions')
 router.register(r'stats', views.StatsViewSet, basename='stats')
+from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
     # Admin interface
     path('admin/', admin.site.urls),
-    
+
+    path('api/auth/login/', obtain_auth_token, name='api_token_auth'),
     # API endpoints
     path('api/v1/', include(router.urls)),
     
